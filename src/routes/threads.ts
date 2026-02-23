@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { body } from 'express-validator';
 import {
   getThreadsByTopic,
   getThreadById,
@@ -9,29 +10,47 @@ import {
   incrementView,
 } from '../controllers/threadController';
 import { authenticate } from '../middleware/auth';
-import { threadValidation, paginationValidation } from '../middleware/validation';
 
 const router = Router({ mergeParams: true });
 
-// GET /api/forum/topics/:slug/threads
-router.get('/', paginationValidation, getThreadsByTopic);
+// GET threads (works for both /topics/:slug/threads and /threads)
+router.get('/', getThreadsByTopic);
 
-// GET /api/forum/threads/:id
+// POST create thread
+router.post(
+  '/',
+  authenticate,
+  [
+    body('title').trim().isLength({ min: 3, max: 200 }),
+    body('content').trim().isLength({ min: 10, max: 10000 }),
+    body('tags').optional().isArray({ max: 10 }),
+  ],
+  createThread,
+);
+
+// IMPORTANT: Specific routes must come before generic :id routes
+// PATCH upvote thread - must be before /:id route
+router.patch('/:id/upvote', authenticate, upvoteThread);
+
+// PATCH increment view - must be before /:id route
+router.patch('/:id/view', incrementView);
+
+// GET single thread
 router.get('/:id', getThreadById);
 
-// POST /api/forum/topics/:slug/threads (protected)
-router.post('/', authenticate, threadValidation.create, createThread);
+// PATCH update thread
+router.patch(
+  '/:id',
+  authenticate,
+  [
+    body('title').optional().trim().isLength({ min: 3, max: 200 }),
+    body('content').optional().trim().isLength({ min: 10, max: 10000 }),
+    body('tags').optional().isArray({ max: 10 }),
+  ],
+  updateThread,
+);
 
-// PATCH /api/forum/threads/:id (protected, owner only)
-router.patch('/:id', authenticate, threadValidation.update, updateThread);
-
-// DELETE /api/forum/threads/:id (protected, owner/admin)
+// DELETE thread
 router.delete('/:id', authenticate, deleteThread);
-
-// POST /api/forum/threads/:id/upvote (protected)
-router.post('/:id/upvote', authenticate, upvoteThread);
-
-// POST /api/forum/threads/:id/view
-router.post('/:id/view', incrementView);
 
 export default router;

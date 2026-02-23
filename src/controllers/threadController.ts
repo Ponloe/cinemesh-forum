@@ -172,7 +172,7 @@ export const updateThread = async (
     if (content) updates.content = xss(content);
     if (tags) updates.tags = tags.map((t: string) => xss(t));
 
-    const updated = await Thread.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+    const updated = await Thread.findByIdAndUpdate(thread._id, updates, { new: true, runValidators: true });
 
     sendSuccess(res, updated, 'Thread updated successfully');
   } catch (error) {
@@ -204,8 +204,8 @@ export const deleteThread = async (
       return;
     }
 
-    // Soft delete
-    await Thread.findByIdAndUpdate(id, { is_deleted: true });
+    // Soft delete - use thread._id instead of id (slug)
+    await Thread.findByIdAndUpdate(thread._id, { is_deleted: true });
 
     // Decrement topic thread count
     await Topic.findOneAndUpdate(
@@ -218,7 +218,6 @@ export const deleteThread = async (
     next(error);
   }
 };
-
 export const upvoteThread = async (
   req: AuthRequest,
   res: Response,
@@ -238,21 +237,21 @@ export const upvoteThread = async (
       return;
     }
 
-    const userId = req.user.user_id.toString()  ;
+    const userId = req.user.user_id.toString();
     const hasUpvoted = thread.upvoted_by.includes(userId);
 
     let updated;
     if (hasUpvoted) {
-      // Remove upvote
+      // Remove upvote - use thread._id instead of id (slug)
       updated = await Thread.findByIdAndUpdate(
-        id,
+        thread._id,
         { $pull: { upvoted_by: userId }, $inc: { 'stats.upvotes': -1 } },
         { new: true },
       );
     } else {
-      // Add upvote
+      // Add upvote - use thread._id instead of id (slug)
       updated = await Thread.findByIdAndUpdate(
-        id,
+        thread._id,
         { $addToSet: { upvoted_by: userId }, $inc: { 'stats.upvotes': 1 } },
         { new: true },
       );
@@ -272,7 +271,14 @@ export const incrementView = async (
   try {
     const { id } = req.params;
 
-    await Thread.findByIdAndUpdate(id, { $inc: { 'stats.views': 1 } });
+    // Find by slug first, then update by _id
+    const thread = await Thread.findOne({ slug: id, is_deleted: false });
+    if (!thread) {
+      sendError(res, 'Thread not found', 404);
+      return;
+    }
+
+    await Thread.findByIdAndUpdate(thread._id, { $inc: { 'stats.views': 1 } });
 
     sendSuccess(res, null, 'View recorded');
   } catch (error) {
