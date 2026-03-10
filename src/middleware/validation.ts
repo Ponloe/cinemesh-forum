@@ -7,15 +7,29 @@ export const topicValidation = {
       .notEmpty().withMessage('Name is required')
       .isLength({ max: 100 }).withMessage('Name cannot exceed 100 characters'),
     body('slug')
+      .optional({ values: 'falsy' })  
       .trim()
-      .notEmpty().withMessage('Slug is required')
       .matches(/^[a-z0-9-]+$/).withMessage('Slug can only contain lowercase letters, numbers, and hyphens'),
     body('description')
       .optional()
       .trim()
       .isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
-    body('icon').optional().trim(),
-    body('gradient').optional().trim(),
+    body('icon').optional({ values: 'falsy' }).trim(),  // Treat empty as optional
+    body('gradient').optional({ values: 'falsy' }).trim(),
+  ],
+
+  update: [
+    body('name')
+      .optional()
+      .trim()
+      .notEmpty().withMessage('Name cannot be empty')
+      .isLength({ max: 100 }).withMessage('Name cannot exceed 100 characters'),
+    body('description')
+      .optional()
+      .trim()
+      .isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+    body('icon').optional({ values: 'falsy' }).trim(),
+    body('gradient').optional({ values: 'falsy' }).trim(),
   ],
 };
 

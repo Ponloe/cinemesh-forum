@@ -3,8 +3,10 @@ import { validationResult } from 'express-validator';
 import xss from 'xss';
 import { Thread } from '../models/Thread';
 import { Topic } from '../models/Topic';
+import { Reply } from '../models/Reply';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError, getPaginationParams } from '../utils/response';
+import { logger } from '../utils/logger';
 
 type SortOrder = 1 | -1;
 
@@ -86,8 +88,14 @@ export const createThread = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
+    logger.info('=== Create Thread Request ===');
+    logger.info(`Body: ${JSON.stringify(req.body)}`);
+    logger.info(`User: ${req.user?.email} (${req.user?.role})`);
+    logger.info(`Topic slug: ${req.params.slug}`);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      logger.error(`Validation errors: ${JSON.stringify(errors.array())}`);
       sendError(res, errors.array()[0].msg, 400);
       return;
     }
@@ -97,6 +105,7 @@ export const createThread = async (
 
     const topic = await Topic.findOne({ slug });
     if (!topic) {
+      logger.error(`Topic not found: ${slug}`);
       sendError(res, 'Topic not found', 404);
       return;
     }
@@ -106,6 +115,8 @@ export const createThread = async (
       return;
     }
 
+    logger.info(`Creating thread in topic: ${slug}`);
+    
     const thread = await Thread.create({
       topic_slug: slug,
       title: xss(title),
@@ -123,8 +134,10 @@ export const createThread = async (
     // Increment topic thread count
     await Topic.findByIdAndUpdate(topic._id, { $inc: { thread_count: 1 } });
 
+    logger.info(`✓ Thread created: ${thread.slug}`);
     sendSuccess(res, thread, 'Thread created successfully', 201);
   } catch (error) {
+    logger.error('Create thread error:', error);
     next(error);
   }
 };
@@ -155,7 +168,7 @@ export const updateThread = async (
       return;
     }
 
-    if (thread.created_by.user_id !== req.user.user_id.toString() && req.user.role !== 'admin') {
+    if (thread.created_by.user_id.toString() !== req.user.user_id.toString() && req.user.role !== 'admin') {
       sendError(res, 'You can only edit your own threads', 403);
       return;
     }
@@ -204,8 +217,14 @@ export const deleteThread = async (
       return;
     }
 
-    // Soft delete - use thread._id instead of id (slug)
+    // Soft delete the thread
     await Thread.findByIdAndUpdate(thread._id, { is_deleted: true });
+
+    // Cascade soft delete all replies in this thread
+    const deletedReplies = await Reply.updateMany(
+      { thread_id: thread._id },
+      { $set: { is_deleted: true } }
+    );
 
     // Decrement topic thread count
     await Topic.findOneAndUpdate(
@@ -213,11 +232,13 @@ export const deleteThread = async (
       { $inc: { thread_count: -1 } },
     );
 
-    sendSuccess(res, null, 'Thread deleted successfully');
+    logger.info(`✓ Deleted thread '${id}' with ${deletedReplies.modifiedCount} replies`);
+    sendSuccess(res, null, 'Thread and all replies deleted successfully');
   } catch (error) {
     next(error);
   }
 };
+
 export const upvoteThread = async (
   req: AuthRequest,
   res: Response,

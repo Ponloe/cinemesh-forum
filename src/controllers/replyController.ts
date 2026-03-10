@@ -6,6 +6,7 @@ import { Reply } from '../models/Reply';
 import { Thread } from '../models/Thread';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError, getPaginationParams } from '../utils/response';
+import { logger } from '../utils/logger';
 
 interface ReplyWithChildren extends ReturnType<typeof Reply.prototype.toObject> {
   children?: ReplyWithChildren[];
@@ -231,7 +232,7 @@ export const updateReply = async (
       return;
     }
 
-    if (reply.created_by.user_id !== req.user.user_id.toString() && req.user.role !== 'admin') {
+    if (reply.created_by.user_id.toString() !== req.user.user_id.toString() && req.user.role !== 'admin') {
       sendError(res, 'You can only edit your own replies', 403);
       return;
     }
@@ -272,17 +273,28 @@ export const deleteReply = async (
       return;
     }
 
+    // Soft delete this reply
     await Reply.findByIdAndUpdate(id, { is_deleted: true });
 
-    // Decrement thread reply count
-    await Thread.findByIdAndUpdate(reply.thread_id, { $inc: { 'stats.reply_count': -1 } });
+    // Cascade soft delete all nested replies (children)
+    const deletedNested = await Reply.updateMany(
+      { parent_id: id },
+      { $set: { is_deleted: true } }
+    );
 
-    sendSuccess(res, null, 'Reply deleted successfully');
+    // Decrement thread reply count (count this reply + nested ones)
+    const totalDeleted = 1 + deletedNested.modifiedCount;
+    await Thread.findByIdAndUpdate(
+      reply.thread_id, 
+      { $inc: { 'stats.reply_count': -totalDeleted } }
+    );
+
+    logger.info(`✓ Deleted reply with ${deletedNested.modifiedCount} nested replies`);
+    sendSuccess(res, null, `Reply and ${deletedNested.modifiedCount} nested replies deleted successfully`);
   } catch (error) {
     next(error);
   }
 };
-
 export const upvoteReply = async (
   req: AuthRequest,
   res: Response,
