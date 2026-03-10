@@ -199,42 +199,66 @@ export const deleteThread = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
+    logger.info('=== Delete Thread Request ===');
+    logger.info(`Thread slug: ${req.params.id}`);
+    logger.info(`User: ${req.user?.email} (${req.user?.role}) [ID: ${req.user?.user_id}]`);
+    logger.info(`Authorization header present: ${req.headers.authorization ? 'Yes' : 'No'}`);
+    
     const { id } = req.params;
     const thread = await Thread.findOne({ slug: id, is_deleted: false });
 
     if (!thread) {
+      logger.error(`Thread not found: ${id}`);
       sendError(res, 'Thread not found', 404);
       return;
     }
 
+    logger.info(`Thread found: ${thread.title} (created by: ${thread.created_by.user_id})`);
+
     if (!req.user) {
+      logger.error('No user in request (auth middleware should have caught this)');
       sendError(res, 'Authentication required', 401);
       return;
     }
 
-    if (thread.created_by.user_id !== req.user.user_id.toString() && req.user.role !== 'admin') {
+    const threadCreatorId = thread.created_by.user_id.toString();
+    const requestUserId = req.user.user_id.toString();
+    const isOwner = threadCreatorId === requestUserId;
+    const isAdmin = req.user.role === 'admin';
+
+    logger.info(`Authorization check: owner=${isOwner}, admin=${isAdmin}`);
+    logger.debug(`Thread creator ID: ${threadCreatorId}, Request user ID: ${requestUserId}`);
+
+    if (!isOwner && !isAdmin) {
+      logger.error(`Permission denied - User ${requestUserId} cannot delete thread owned by ${threadCreatorId}`);
       sendError(res, 'You can only delete your own threads', 403);
       return;
     }
 
+    logger.info('✓ Authorization passed, proceeding with deletion');
+
     // Soft delete the thread
     await Thread.findByIdAndUpdate(thread._id, { is_deleted: true });
+    logger.info(`✓ Thread marked as deleted`);
 
     // Cascade soft delete all replies in this thread
     const deletedReplies = await Reply.updateMany(
       { thread_id: thread._id },
       { $set: { is_deleted: true } }
     );
+    logger.info(`✓ Marked ${deletedReplies.modifiedCount} replies as deleted`);
 
     // Decrement topic thread count
     await Topic.findOneAndUpdate(
       { slug: thread.topic_slug },
       { $inc: { thread_count: -1 } },
     );
+    logger.info(`✓ Decremented thread count for topic: ${thread.topic_slug}`);
 
-    logger.info(`✓ Deleted thread '${id}' with ${deletedReplies.modifiedCount} replies`);
+    logger.info(`✓ Successfully deleted thread '${id}' with ${deletedReplies.modifiedCount} replies`);
     sendSuccess(res, null, 'Thread and all replies deleted successfully');
   } catch (error) {
+    logger.error('Delete thread error:', error);
     next(error);
   }
 };
