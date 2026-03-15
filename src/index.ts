@@ -259,7 +259,7 @@ app.use(`${API_BASE}/topics/:slug/threads`, threadRoutes);
 app.use(`${API_BASE}/threads`, threadRoutes); // 
 app.use(`${API_BASE}/topics`, topicRoutes); //
 app.use(`${API_BASE}`, replyRoutes);
-
+app.use(`${API_BASE}`, threadRoutes);
 
 // 404 handler
 app.use(notFound);

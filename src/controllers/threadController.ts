@@ -330,3 +330,37 @@ export const incrementView = async (
     next(error);
   }
 };
+
+export const getMovieReviews = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { movieId } = req.params;
+    const { page, limit } = req.query as Record<string, string>;
+    const { page: pageNum, limit: limitNum, skip } = getPaginationParams(page, limit);
+
+    const parsedMovieId = Number(movieId);
+
+    const filter = {
+      topic_slug: 'reviews',
+      movie_id: parsedMovieId,
+      is_deleted: false,
+    };
+
+    const [threads, total] = await Promise.all([
+      Thread.find(filter).sort({ last_activity_at: -1 }).skip(skip).limit(limitNum).lean(),
+      Thread.countDocuments(filter),
+    ]);
+
+    sendSuccess(res, threads, 'Movie reviews retrieved successfully', 200, {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
