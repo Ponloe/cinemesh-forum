@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import {
   getThreadsByTopic,
+  getMovieReviews,
   getThreadById,
   createThread,
   updateThread,
@@ -34,6 +35,9 @@ router.patch('/:id/upvote', authenticate, upvoteThread);
 
 // PATCH increment view - must be before /:id route
 router.patch('/:id/view', incrementView);
+
+// GET movie reviews - must be before /:id route
+router.get('/movies/:movieId/reviews', getMovieReviews);
 
 // GET single thread
 router.get('/:id', getThreadById);
